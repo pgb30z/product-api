@@ -1,4 +1,4 @@
-name: Product API CI
+name: Product API CI/CD
 
 on:
   push:
@@ -10,8 +10,22 @@ on:
       - main
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
+
+    services:
+      mongodb:
+        image: mongo:8.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval \"db.adminCommand('ping')\""
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      MONGO_URI_TEST: mongodb://127.0.0.1:27017/productdb_test
 
     steps:
       - name: Checkout source code
@@ -26,8 +40,82 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Check Node project
+      - name: Check JavaScript syntax
         run: node --check server.js
 
-      - name: Build Docker image
-        run: docker build -t product-api .
+      - name: Run CRUD tests
+        run: npm test
+
+
+  healthcheck:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Create CI env file
+        run: |
+          echo "PORT=3000" > .env
+          echo "MONGO_URI=mongodb://mongodb:27017/productdb" >> .env
+
+      - name: Start application with Docker Compose
+        run: docker compose up -d --build
+
+      - name: Wait for containers
+        run: sleep 15
+
+      - name: Check container status
+        run: docker compose ps
+
+      - name: Check MongoDB health
+        run: |
+          STATUS=$(docker inspect --format='{{.State.Health.Status}}' nammongodb)
+          echo "MongoDB health: $STATUS"
+          test "$STATUS" = "healthy"
+
+      - name: Check Product API health
+        run: |
+          STATUS=$(docker inspect --format='{{.State.Health.Status}}' product-api-container)
+          echo "Product API health: $STATUS"
+          test "$STATUS" = "healthy"
+
+      - name: Test health endpoint
+        run: curl --fail http://localhost:3000/health
+
+      - name: Stop containers
+        if: always()
+        run: docker compose down -v
+
+
+  docker:
+    needs:
+      - test
+      - healthcheck
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/product-api:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/product-api:${{ github.sha }}

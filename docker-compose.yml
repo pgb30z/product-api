@@ -2,6 +2,7 @@ services:
   mongodb:
     image: mongo:8.0
     container_name: nammongodb
+
     ports:
       - "27017:27017"
 
@@ -21,6 +22,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
 
   product-api:
     build: .
@@ -50,6 +52,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
 
 volumes:
   mongo-data:
