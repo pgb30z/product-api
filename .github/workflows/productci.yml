@@ -119,3 +119,16 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/product-api:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/product-api:${{ github.sha }}
+deploy-local:
+  needs: docker
+  runs-on: self-hosted
+
+  steps:
+    - name: Checkout source code
+      uses: actions/checkout@v4
+
+    - name: Pull latest image
+      run: docker pull pgb30z/product-api:latest
+
+    - name: Deploy to local Docker Engine
+      run: docker compose -f docker-compose-prod.yaml up -d
