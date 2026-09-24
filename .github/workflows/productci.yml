@@ -119,16 +119,59 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/product-api:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/product-api:${{ github.sha }}
-deploy-local:
-  needs: docker
-  runs-on: self-hosted
 
-  steps:
-    - name: Checkout source code
-      uses: actions/checkout@v4
 
-    - name: Pull latest image
-      run: docker pull pgb30z/product-api:latest
+  deploy-local:
+    needs: docker
 
-    - name: Deploy to local Docker Engine
-      run: docker compose -f docker-compose-prod.yaml up -d
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    runs-on:
+      - self-hosted
+      - Windows
+      - X64
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Pull latest image from Docker Hub
+        run: docker pull pgb30z/product-api:latest
+
+      - name: Stop old production containers
+        run: docker compose -f docker-compose-prod.yaml down
+
+      - name: Start production containers
+        run: docker compose -f docker-compose-prod.yaml up -d
+
+      - name: Check production containers
+        run: docker compose -f docker-compose-prod.yaml ps
+
+      - name: Wait for Product API
+        shell: powershell
+        run: Start-Sleep -Seconds 15
+
+      - name: Check Product API health
+        shell: powershell
+        run: |
+          $status = docker inspect --format='{{.State.Health.Status}}' product-api-prod
+
+          Write-Host "Product API health: $status"
+
+          if ($status -ne "healthy") {
+              docker logs product-api-prod
+              exit 1
+          }
+
+      - name: Test health endpoint
+        shell: powershell
+        run: |
+          $response = Invoke-WebRequest `
+            -Uri "http://localhost:3000/health" `
+            -UseBasicParsing
+
+          Write-Host $response.Content
+
+          if ($response.StatusCode -ne 200) {
+              exit 1
+          }
