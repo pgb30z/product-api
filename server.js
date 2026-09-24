@@ -1,36 +1,20 @@
 require("dotenv").config();
 
-const express = require("express");
 const mongoose = require("mongoose");
+const app = require("./app");
 
-const productRoutes = require("./routes/productRoutes");
-
-const app = express();
-
-// Đọc dữ liệu JSON từ request
-app.use(express.json());
-
-// Route
-app.use("/api/products", productRoutes);
-
-app.get("/health", (req, res) => {
-    res.status(200).json({
-        status: "OK",
-        message: "Product API is healthy"
-    });
-});
+const PORT = process.env.PORT || 3000;
 
 mongoose
     .connect(process.env.MONGO_URI)
     .then(() => {
         console.log("MongoDB connected successfully");
 
-        app.listen(process.env.PORT, () => {
-            console.log(
-                `Server running at http://localhost:${process.env.PORT}`
-            );
+        app.listen(PORT, () => {
+            console.log(`Server running at http://localhost:${PORT}`);
         });
     })
     .catch((error) => {
-        console.error(error);
+        console.error("MongoDB connection error:", error);
+        process.exit(1);
     });
